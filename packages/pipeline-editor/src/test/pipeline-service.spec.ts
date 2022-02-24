@@ -15,11 +15,14 @@
  */
 
 import { JupyterServer } from '@jupyterlab/testutils';
+import { PathExt } from '@jupyterlab/coreutils';
+import { posix } from 'path';
 
-import { PipelineService } from '../PipelineService';
+import { PipelineService, IRuntimeType } from '../PipelineService';
 jest.setTimeout(3 * 60 * 1000);
 
 const server = new JupyterServer();
+let runtime_types: IRuntimeType[];
 
 beforeAll(async () => {
   await server.start();
@@ -29,20 +32,60 @@ afterAll(async () => {
   await server.shutdown();
 });
 
-describe('@elyra/pipeline-editor', () => {
-  describe('PipelineService', () => {
-    describe('#getRuntimeTypes', () => {
-      it('should get runtimes ordered by id', async () => {
-        const runtime_types = await PipelineService.getRuntimeTypes();
-        const expected_runtime_ids = [
-          'APACHE_AIRFLOW',
-          'KUBEFLOW_PIPELINES',
-          'LOCAL'
-        ];
-        expect(
-          runtime_types.map(runtime_type => runtime_type.id)
-        ).toStrictEqual(expected_runtime_ids);
-      });
-    });
+// jest.mock('@jupyterlab/coreutils', () => {
+//   return {
+//     resolve: jest.fn(() => false)
+//   };
+// });
+
+describe('PipelineService', () => {
+  it('should get runtime types ordered by id', async () => {
+    runtime_types = await PipelineService.getRuntimeTypes();
+    const expected_runtime_ids = [
+      'APACHE_AIRFLOW',
+      'KUBEFLOW_PIPELINES',
+      'LOCAL'
+    ];
+    expect(runtime_types.map(runtime_type => runtime_type.id)).toStrictEqual(
+      expected_runtime_ids
+    );
   });
+  it('should get pipeline-relative node path', () => {
+    let path = PipelineService.getPipelineRelativeNodePath(
+      'pipelines/my.pipeline',
+      'nodes/load_data.py'
+    );
+    expect(path).toBe('../nodes/load_data.py');
+    path = PipelineService.getPipelineRelativeNodePath(
+      'my.pipeline',
+      'nodes/load_data.py'
+    );
+    expect(path).toBe('nodes/load_data.py');
+    path = PipelineService.getPipelineRelativeNodePath(
+      'pipelines/my.pipeline',
+      'load_data.py'
+    );
+    expect(path).toBe('../load_data.py');
+    path = PipelineService.getPipelineRelativeNodePath(
+      'my.pipeline',
+      'load_data.py'
+    );
+    expect(path).toBe('load_data.py');
+  });
+  it('should get runtimes', async () => {
+    const runtimes = await PipelineService.getRuntimes();
+    console.log('runtimes are', runtimes);
+    expect(true).toBe(false);
+  });
+  // it('should get the workspace-relative node path', () => {
+  //   process.cwd = jest.fn().mockReturnValue('/hello/world')
+  //   // process.cwd = jest.spyOn(process, 'cwd');
+  //   // spy.mockReturnValue('mocke/value');
+  //   let path = PipelineService.getWorkspaceRelativeNodePath('data/my.pipeline', '../load_data.py')
+  //   expect(path).toBe('')
+  //   // spy.mockClear()
+  // })
+  // it('should do something else', () => {
+  //   expect('').toBe(process.cwd())
+  // })
 });
