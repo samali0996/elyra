@@ -13,13 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+import { MetadataService } from '@elyra/services';
 import { JupyterServer } from '@jupyterlab/testutils';
-import { PathExt } from '@jupyterlab/coreutils';
-import { posix } from 'path';
 
-import { PipelineService, IRuntimeType } from '../PipelineService';
-jest.setTimeout(3 * 60 * 1000);
+import {
+  PipelineService,
+  IRuntimeType,
+  RUNTIMES_SCHEMASPACE
+} from '../PipelineService';
+
+import {
+  expected_runtime_types,
+  expected_runtimes,
+  expected_schema
+} from './mock-data';
 
 const server = new JupyterServer();
 let runtime_types: IRuntimeType[];
@@ -32,12 +39,6 @@ afterAll(async () => {
   await server.shutdown();
 });
 
-// jest.mock('@jupyterlab/coreutils', () => {
-//   return {
-//     resolve: jest.fn(() => false)
-//   };
-// });
-
 describe('PipelineService', () => {
   it('should get runtime types ordered by id', async () => {
     runtime_types = await PipelineService.getRuntimeTypes();
@@ -46,46 +47,40 @@ describe('PipelineService', () => {
       'KUBEFLOW_PIPELINES',
       'LOCAL'
     ];
+    expect(runtime_types).toStrictEqual(expected_runtime_types);
     expect(runtime_types.map(runtime_type => runtime_type.id)).toStrictEqual(
       expected_runtime_ids
     );
   });
-  it('should get pipeline-relative node path', () => {
-    let path = PipelineService.getPipelineRelativeNodePath(
-      'pipelines/my.pipeline',
-      'nodes/load_data.py'
-    );
-    expect(path).toBe('../nodes/load_data.py');
-    path = PipelineService.getPipelineRelativeNodePath(
-      'my.pipeline',
-      'nodes/load_data.py'
-    );
-    expect(path).toBe('nodes/load_data.py');
-    path = PipelineService.getPipelineRelativeNodePath(
-      'pipelines/my.pipeline',
-      'load_data.py'
-    );
-    expect(path).toBe('../load_data.py');
-    path = PipelineService.getPipelineRelativeNodePath(
-      'my.pipeline',
-      'load_data.py'
-    );
-    expect(path).toBe('load_data.py');
+  it.each([
+    ['pipelines/my.pipeline', 'nodes/load_data.py', '../nodes/load_data.py'],
+    ['my.pipeline', 'nodes/load_data.py', 'nodes/load_data.py'],
+    ['pipelines/my.pipeline', 'load_data.py', '../load_data.py'],
+    ['my.pipeline', 'load_data.py', 'load_data.py']
+  ])(
+    'should get pipeline-relative node path',
+    (pipelinePath, nodePath, result) => {
+      const path = PipelineService.getPipelineRelativeNodePath(
+        pipelinePath,
+        nodePath
+      );
+      expect(path).toBe(result);
+    }
+  );
+  it.each([[expected_runtimes], [[]]])(
+    'should get runtimes',
+    async runtimes => {
+      const spyOnGetMetadata = jest
+        .spyOn(MetadataService, 'getMetadata')
+        .mockImplementation(async () => runtimes);
+      const runtimes_response = await PipelineService.getRuntimes();
+
+      expect(spyOnGetMetadata).toHaveBeenCalledWith(RUNTIMES_SCHEMASPACE);
+      expect(runtimes_response).toStrictEqual(runtimes);
+    }
+  );
+  it('should get runtime schemas', async () => {
+    const schemaResponse = await PipelineService.getRuntimesSchema();
+    expect(schemaResponse).toStrictEqual(expected_schema);
   });
-  it('should get runtimes', async () => {
-    const runtimes = await PipelineService.getRuntimes();
-    console.log('runtimes are', runtimes);
-    expect(true).toBe(false);
-  });
-  // it('should get the workspace-relative node path', () => {
-  //   process.cwd = jest.fn().mockReturnValue('/hello/world')
-  //   // process.cwd = jest.spyOn(process, 'cwd');
-  //   // spy.mockReturnValue('mocke/value');
-  //   let path = PipelineService.getWorkspaceRelativeNodePath('data/my.pipeline', '../load_data.py')
-  //   expect(path).toBe('')
-  //   // spy.mockClear()
-  // })
-  // it('should do something else', () => {
-  //   expect('').toBe(process.cwd())
-  // })
 });
