@@ -66,7 +66,7 @@ afterAll(async () => {
   await server.shutdown();
 });
 
-beforeEach(() => {
+afterEach(() => {
   jest.clearAllMocks();
 });
 
@@ -185,45 +185,101 @@ describe('PipelineService', () => {
       );
     }
   );
-  it('should submit pipeline', async () => {
-    // add utils, get dialog body, get dialog title
-    // check that request handler was called with proper params
-    // check that dialog is rendered with correct info
-    // check difference between local and with external runtime
-    const mockReturn = {
-      platform: 'LOCAL',
-      run_url: '',
-      object_storage_url: '',
-      object_storage_path: ''
-    };
-    // mock the things that call the request handler
-    // mock this so that only this file has access to this
-    const makePostRequestSpy = jest
-      .spyOn(RequestHandler, 'makePostRequest')
-      .mockResolvedValueOnce(
-        Promise.resolve({
-          platform: 'APACHE_AIRFLOW',
-          run_url: 'www.example.com',
-          object_storage_url: 'www.object_storage.com',
-          object_storage_path: 'foo/bar'
-        })
+  it.each([
+    [
+      {
+        platform: 'LOCAL',
+        run_url: '',
+        object_storage_url: '',
+        object_storage_path: ''
+      },
+      'Local',
+      {
+        header: 'Job execution succeeded',
+        body: {
+          content: ['in-place', 'local environment'],
+          hrefs: []
+        }
+      }
+    ],
+    [
+      {
+        platform: 'APACHE_AIRFLOW',
+        git_url: 'www.airflow_git.com',
+        run_url: 'www.airflow_run.com',
+        object_storage_url: 'www.airflow_storage.com',
+        object_storage_path: 'airflow/path'
+      },
+      'Apache Airflow',
+      {
+        header: 'Job submission to Apache Airflow succeeded',
+        body: {
+          content: [
+            'Apache Airflow DAG',
+            'Git repository',
+            'Run Details',
+            'airflow/path',
+            'object storage'
+          ],
+          hrefs: [
+            'www.airflow_git.com',
+            'www.airflow_run.com',
+            'www.airflow_storage.com'
+          ]
+        }
+      }
+    ],
+    [
+      {
+        platform: 'KUBEFLOW_PIPELINES',
+        run_url: 'www.kube_run.com',
+        object_storage_url: 'www.kube_storage.com',
+        object_storage_path: 'kube/path'
+      },
+      'Kubeflow Pipelines',
+      {
+        header: 'Job submission to Kubeflow Pipelines succeeded',
+        body: {
+          content: ['Run Details', 'kube/path', 'object storage'],
+          hrefs: ['www.kube_run.com', 'www.kube_storage.com']
+        }
+      }
+    ]
+  ])(
+    'should submit pipeline',
+    async (mockPostResponse, runtimeName, expectedDialogDetails) => {
+      const makePostRequestSpy = jest
+        .spyOn(RequestHandler, 'makePostRequest')
+        .mockResolvedValue(Promise.resolve(mockPostResponse));
+      const node = document.body;
+
+      PipelineService.submitPipeline(expected_pipeline_json, runtimeName);
+
+      await waitForDialog();
+      expect(makePostRequestSpy).toHaveBeenCalledWith(
+        'elyra/pipeline/schedule',
+        JSON.stringify(expected_pipeline_json),
+        PipelineService.getWaitDialog('Packaging and submitting pipeline ...')
       );
-    const node = document.body;
 
-    const prompt = PipelineService.submitPipeline(
-      expected_pipeline_json,
-      'Kubeflow Pipelines'
-    );
-
-    await waitForDialog();
-    console.log(node);
-    console.log(node.getElementsByClassName('jp-Dialog')[0].innerHTML);
-    // expect(node.querySelector('.jp-Dialog-close-button')).toBeTruthy();
-    // expect(result).toBe(false);
-    await acceptDialog();
-    const result = await prompt;
-    expect(result).toBe(false);
-  });
+      const dialog = node.getElementsByClassName('jp-Dialog')[0];
+      expect(
+        dialog.getElementsByClassName('jp-Dialog-header')[0].textContent
+      ).toBe(expectedDialogDetails.header);
+      const dialogBody = dialog.getElementsByClassName('jp-Dialog-body')[0];
+      expectedDialogDetails.body.content.forEach((keyword: string) => {
+        expect(dialogBody.textContent).toContain(keyword);
+      });
+      expectedDialogDetails.body.hrefs.forEach(
+        (href: string, index: number) => {
+          expect(
+            dialog.getElementsByTagName('a')[index].getAttribute('href')
+          ).toEqual(href);
+        }
+      );
+      await acceptDialog();
+    }
+  );
   // make test for getWaitDialog
 });
 
