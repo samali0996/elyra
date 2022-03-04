@@ -91,7 +91,7 @@ export class PipelineService {
         return RequestErrors.noMetadataError('schema');
       }
 
-      return schema;
+      return schema.sort((a: any, b: any) => a.name.localeCompare(b.name));
     });
   }
 

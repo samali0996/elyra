@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-jest.unmock('@elyra/services');
+// jest.unmock('@elyra/services');
 // jest.mock('@jupyterlab/apputils');
 // const apputils: any = jest.genMockFromModule('@jupyterlab/apputils');
 // apputils.showDialog = jest.fn(async () => Promise.resolve('hello'));
@@ -121,12 +121,12 @@ describe('PipelineService', () => {
     ]
   ])(
     'should get workspace relative node path',
-    (pipelinePath, nodePath, workspacePath) => {
+    (pipelinePath, nodePath, workspaceNodePath) => {
       const path = PipelineService.getWorkspaceRelativeNodePath(
         pipelinePath,
         nodePath
       );
-      expect(removeCwdFromPath(path)).toBe(workspacePath);
+      expect(removeCwdFromPath(path)).toBe(workspaceNodePath);
     }
   );
   it.each([[expected_runtimes], [[]]])(
@@ -145,61 +145,51 @@ describe('PipelineService', () => {
     const schemaResponse = await PipelineService.getRuntimesSchema();
     expect(schemaResponse).toStrictEqual(expected_schema);
   });
-  describe('setNodePathsRelativeToWorkspace', () => {
-    // maybe take out this nested describe?
-    let getWorkspaceRelativeNodePathSpy: jest.SpyInstance;
-    beforeAll(() => {
-      getWorkspaceRelativeNodePathSpy = jest.spyOn(
+  it.each([
+    [
+      expected_pipeline,
+      'run-generic-pipelines-on-kubeflow-pipelines/hello-generic-world.pipeline',
+      [
+        'run-generic-pipelines-on-kubeflow-pipelines/load_data.ipynb',
+        'run-generic-pipelines-on-kubeflow-pipelines/Part 1 - Data Cleaning.ipynb',
+        'run-generic-pipelines-on-kubeflow-pipelines/Part 2 - Data Analysis.ipynb',
+        'Part 3 - Time Series Forecasting.ipynb'
+      ],
+      3
+    ]
+  ])(
+    'should set Node paths with valid op to relative to workspace',
+    (pipeline, pipelinePath, result, expectedGetPathCalls) => {
+      const getWorkspaceRelativeNodePathSpy = jest.spyOn(
         PipelineService,
         'getWorkspaceRelativeNodePath'
       );
-      const pipelinePath =
-        'run-generic-pipelines-on-kubeflow-pipelines/hello-generic-world.pipeline';
-      PipelineService.setNodePathsRelativeToWorkspace(
-        expected_pipeline,
-        pipelinePath
+      PipelineService.setNodePathsRelativeToWorkspace(pipeline, pipelinePath);
+      pipeline.nodes.forEach((node: any, index: any) => {
+        let filePath = node.app_data.component_parameters.filename;
+        if (
+          [
+            'execute-notebook-node',
+            'execute-python-node',
+            'execute-r-node'
+          ].includes(node.op)
+        ) {
+          filePath = removeCwdFromPath(
+            node.app_data.component_parameters.filename
+          );
+        }
+        expect(filePath).toBe(result[index]);
+      });
+      expect(getWorkspaceRelativeNodePathSpy).toHaveBeenCalledTimes(
+        expectedGetPathCalls
       );
-    });
-    afterAll(() => {
-      jest.clearAllMocks();
-    });
-
-    it.each([
-      [0, 'run-generic-pipelines-on-kubeflow-pipelines/load_data.ipynb'],
-      [
-        1,
-        'run-generic-pipelines-on-kubeflow-pipelines/Part 1 - Data Cleaning.ipynb'
-      ],
-      [
-        2,
-        'run-generic-pipelines-on-kubeflow-pipelines/Part 2 - Data Analysis.ipynb'
-      ]
-    ])(
-      'should set Node paths with valid op to relative to workspace',
-      (nodeIndex, result) => {
-        const filePath = removeCwdFromPath(
-          expected_pipeline.nodes[nodeIndex].app_data.component_parameters
-            .filename
-        );
-        expect(filePath).toBe(result);
-        // expect(getWorkspaceRelativeNodePathSpy).toHaveBeenCalledTimes(3);
-      }
-    );
-    it('should not set workspace relative nodepath with invalid op', () => {
-      expect(
-        expected_pipeline.nodes[3].app_data.component_parameters.filename
-      ).toBe('Part 3 - Time Series Forecasting.ipynb');
-      // expect(getWorkspaceRelativeNodePathSpy).toHaveBeenCalledTimes(0);
-    });
-  });
+    }
+  );
   it('should submit pipeline', async () => {
-    // jest.mock('@elyra/services');
     // add utils, get dialog body, get dialog title
     // check that request handler was called with proper params
     // check that dialog is rendered with correct info
     // check difference between local and with external runtime
-    // check that the
-    // jest.mock('@jupyterlab/apputils');
     const mockReturn = {
       platform: 'LOCAL',
       run_url: '',
@@ -220,7 +210,6 @@ describe('PipelineService', () => {
       );
     const node = document.body;
 
-    // document.body.appendChild(node);
     const prompt = PipelineService.submitPipeline(
       expected_pipeline_json,
       'Kubeflow Pipelines'
